@@ -311,6 +311,30 @@ lbox_fillspace(struct lua_State *L, struct space *space, int i)
 
 		lua_settable(L, -3); /* space.index[k].parts */
 
+		if (index_is_functional(index_def)) {
+			lua_pushstring(L, "functional");
+			lua_newtable(L);
+
+			lua_pushstring(L, index_def->opts.func_code);
+			lua_setfield(L, -2, "func_code");
+
+			lua_pushinteger(L, index_def->opts.pkey_offset);
+			lua_setfield(L, -2, "pkey_offset");
+
+			lua_rawgeti(L, LUA_REGISTRYINDEX, index->func_ref);
+			assert(lua_isfunction(L, -1));
+			lua_setfield(L, -2, "func");
+
+			lua_rawgeti(L, LUA_REGISTRYINDEX, index->func_trigger_ref);
+			assert(lua_isfunction(L, -1));
+			lua_setfield(L, -2, "trigger");
+
+			lua_settable(L, -3);
+		}
+
+		lua_pushboolean(L, index_opts->is_multikey);
+		lua_setfield(L, -2, "is_multikey");
+
 		lua_pushstring(L, "sequence_id");
 		if (k == 0 && space->sequence != NULL) {
 			lua_pushnumber(L, space->sequence->def->id);

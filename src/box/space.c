@@ -43,6 +43,7 @@
 #include "xrow.h"
 #include "iproto_constants.h"
 #include "schema.h"
+#include "lua/call.h"
 
 int
 access_check_space(struct space *space, user_access_t access)
@@ -161,6 +162,14 @@ space_create(struct space *space, struct engine *engine,
 		if (index == NULL)
 			goto fail_free_indexes;
 		space->index_map[index_def->iid] = index;
+		if (index_is_functional(index->def)) {
+			if (lua_func_new(index->def->opts.func_code,
+					 &index->func_ref) != 0)
+				diag_raise();
+			lua_func_idx_trigger_set(space_name(space),
+						index->def->name,
+						&index->func_trigger_ref);
+		}
 	}
 	space_fill_index_map(space);
 	return 0;

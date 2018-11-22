@@ -95,6 +95,18 @@ struct index_opts {
 	 * LSN from the time of index creation.
 	 */
 	int64_t lsn;
+	/**
+	 * Is this index multikey or not - relevant to Functional
+	 * index.
+	 */
+	bool is_multikey;
+	/** Extractor function LUA code string. */
+	char *func_code;
+	/**
+	 * Offset of primary key in functional index ispace
+	 * tuples.
+	 */
+	uint32_t pkey_offset;
 };
 
 extern const struct index_opts index_opts_default;
@@ -107,6 +119,16 @@ static inline void
 index_opts_create(struct index_opts *opts)
 {
 	*opts = index_opts_default;
+}
+
+/**
+ * Destroy index options
+ */
+static inline void
+index_opts_destroy(struct index_opts *opts)
+{
+	free(opts->func_code);
+	TRASH(opts);
 }
 
 static inline int
@@ -196,6 +218,12 @@ index_def_list_add(struct rlist *index_def_list, struct index_def *index_def)
 		rlist_add_entry(index_def_list, index_def, link);
 	else
 		rlist_add_tail_entry(index_def_list, index_def, link);
+}
+
+static inline bool
+index_is_functional(const struct index_def *index_def)
+{
+	return index_def->opts.func_code != NULL;
 }
 
 /**

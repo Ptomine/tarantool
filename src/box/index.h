@@ -454,6 +454,10 @@ struct index {
 	struct engine *engine;
 	/* Description of a possibly multipart key. */
 	struct index_def *def;
+	/* Functional index extractor routine reference. */
+	int32_t func_ref;
+	/* Functional index trap trigger routine reference. */
+	int32_t func_trigger_ref;
 	/* Space cache version at the time of construction. */
 	uint32_t space_cache_version;
 };

@@ -7,6 +7,7 @@ local fun = require('fun')
 local log = require('log')
 local fio = require('fio')
 local json = require('json')
+local func_idx = require('func_idx')
 local session = box.session
 local internal = require('box.internal')
 local function setmap(table)
@@ -277,6 +278,10 @@ local function check_param_table(table, template)
             end
         end
     end
+end
+
+function func_idx_trigger_set(space_name, idx_name)
+    return func_idx.space_trigger_set(space_name, idx_name)
 end
 
 --[[
@@ -675,6 +680,9 @@ local index_options = {
     range_size = 'number',
     page_size = 'number',
     bloom_fpr = 'number',
+    is_multikey = 'boolean',
+    func_code = 'string',
+    func_format = 'table'
 }
 
 --
@@ -720,16 +728,31 @@ box.schema.index.create = function(space_id, name, options)
     }
     options_defaults = type_dependent_defaults[options.type]
             or type_dependent_defaults.other
-    if not options.parts then
-        local fieldno = options_defaults.parts[1]
-        if #format >= fieldno then
-            local t = format[fieldno].type
-            if t ~= 'any' then
-                options.parts = {{fieldno, format[fieldno].type}}
+    if not options.func_code then
+        if not options.parts then
+            local fieldno = options_defaults.parts[1]
+            if #format >= fieldno then
+                local t = format[fieldno].type
+                if t ~= 'any' then
+                    options.parts = {{fieldno, format[fieldno].type}}
+                end
             end
         end
+        options = update_param_table(options, options_defaults)
+    elseif options.parts ~= nil then
+        box.error(box.error.ILLEGAL_PARAMS,
+                  "options.parts: parts can't be set for functional index")
     end
-    options = update_param_table(options, options_defaults)
+    if (options.func_code == nil) ~= (options.func_format == nil) then
+         box.error(box.error.ILLEGAL_PARAMS,
+                  "options.func_: bouth of parameters func_code and "..
+                  "func_format should be specified for functional index")
+    end
+    if options.is_multikey and (options.func_code == nil) then
+        box.error(box.error.ILLEGAL_PARAMS,
+                  "options.is_multikey: can't specify is_multikey option for "..
+                  "non-functional index")
+    end
     if space.engine == 'vinyl' then
         options_defaults = {
             page_size = box.cfg.vinyl_page_size,
@@ -767,8 +790,11 @@ box.schema.index.create = function(space_id, name, options)
             end
         end
     end
-    local parts, parts_can_be_simplified =
-        update_index_parts(format, options.parts)
+    local parts, parts_can_be_simplified = {}, false
+    if not options.func_code then
+        parts, parts_can_be_simplified =
+            update_index_parts(format, options.parts)
+    end
     -- create_index() options contains type, parts, etc,
     -- stored separately. Remove these members from index_opts
     local index_opts = {
@@ -780,6 +806,9 @@ box.schema.index.create = function(space_id, name, options)
             run_count_per_level = options.run_count_per_level,
             run_size_ratio = options.run_size_ratio,
             bloom_fpr = options.bloom_fpr,
+            is_multikey = options.is_multikey,
+            func_code = options.func_code,
+            func_format = options.func_format,
     }
     local field_type_aliases = {
         num = 'unsigned'; -- Deprecated since 1.7.2
@@ -823,6 +852,11 @@ box.schema.index.create = function(space_id, name, options)
     -- save parts in old format if possible
     if parts_can_be_simplified then
         parts = simplify_index_parts(parts)
+    end
+    if options.func_code ~= nil then
+        func_idx.ispace_create(space, name, options.func_code,
+                               options.func_format, options.unique or false,
+                               options.is_multikey or false)
     end
     _index:insert{space_id, iid, name, options.type, index_opts, parts}
     if sequence ~= nil then
@@ -1294,6 +1328,7 @@ local function check_select_opts(opts, key_is_nil)
     end
     return iterator, offset, limit
 end
+box.internal.check_select_opts = check_select_opts
 
 base_index_mt.select_ffi = function(index, key, opts)
     check_index_arg(index, 'select')
@@ -1521,6 +1556,7 @@ local function wrap_schema_object_mt(name)
     return mt
 end
 
+
 function box.schema.space.bless(space)
     local index_mt_name
     if space.engine == 'vinyl' then
@@ -1535,6 +1571,9 @@ function box.schema.space.bless(space)
         for j, index in pairs(space.index) do
             if type(j) == 'number' then
                 setmetatable(index, wrap_schema_object_mt(index_mt_name))
+                if index.functional ~= nil then
+                    func_idx.monkeypatch(index)
+                end
             end
         end
     end

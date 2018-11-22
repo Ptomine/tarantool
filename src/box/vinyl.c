@@ -949,6 +949,12 @@ vinyl_index_def_change_requires_rebuild(struct index *index,
 	if (!old_def->opts.is_unique && new_def->opts.is_unique)
 		return true;
 
+	if (index_is_functional(old_def) != index_is_functional(new_def))
+		return true;
+	else if (index_is_functional(old_def) &&
+		 strcmp(old_def->opts.func_code, new_def->opts.func_code) != 0)
+		return true;
+
 	assert(index_depends_on_pk(index));
 	const struct key_def *old_cmp_def = old_def->cmp_def;
 	const struct key_def *new_cmp_def = new_def->cmp_def;

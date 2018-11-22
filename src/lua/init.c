@@ -81,6 +81,7 @@ bool start_loop = true;
 extern char strict_lua[],
 	uuid_lua[],
 	msgpackffi_lua[],
+	func_idx_lua[],
 	fun_lua[],
 	crypto_lua[],
 	digest_lua[],
@@ -120,6 +121,7 @@ extern char strict_lua[],
 static const char *lua_modules[] = {
 	/* Make it first to affect load of all other modules */
 	"strict", strict_lua,
+	"func_idx", func_idx_lua,
 	"fun", fun_lua,
 	"tarantool", init_lua,
 	"errno", errno_lua,

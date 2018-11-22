@@ -35,6 +35,8 @@
 extern "C" {
 #endif /* defined(__cplusplus) */
 
+#include <inttypes.h>
+
 struct lua_State;
 
 void
@@ -52,6 +54,22 @@ box_lua_call(struct call_request *request, struct port *port);
 
 int
 box_lua_eval(struct call_request *request, struct port *port);
+
+/** Set functional index trap trigger on space. */
+void
+lua_func_idx_trigger_set(const char *space_name, const char *idx_name,
+			 int32_t *trigger_ref);
+
+/**
+ * Make and register a new LUA function object by func_code
+ * string.
+ */
+int
+lua_func_new(const char *func_code, int32_t *func_ref);
+
+/** Release registered LUA function object. */
+void
+lua_func_delete(uint32_t func_ref);
 
 #if defined(__cplusplus)
 } /* extern "C" */
