@@ -857,8 +857,12 @@ iproto_connection_on_input(ev_loop *loop, struct ev_io *watcher,
 			return;
 		}
 		/* Read input. */
-		int nrd = sio_read(fd, in->wpos, ibuf_unused(in));
+		bool is_error_critical;
+		int nrd = sio_read(fd, in->wpos, ibuf_unused(in),
+				   &is_error_critical);
 		if (nrd < 0) {                  /* Socket is not ready. */
+			if (is_error_critical)
+				diag_raise();
 			ev_io_start(loop, &con->input);
 			return;
 		}
@@ -922,11 +926,12 @@ iproto_flush(struct iproto_connection *con)
 	/* *Overwrite* iov_len of the last pos as it may be garbage. */
 	iov[iovcnt-1].iov_len = end->iov_len - begin->iov_len * (iovcnt == 1);
 
-	ssize_t nwr = sio_writev(fd, iov, iovcnt);
-
-	/* Count statistics */
-	rmean_collect(rmean_net, IPROTO_SENT, nwr);
-	if (nwr > 0) {
+	bool is_error_critical;
+	ssize_t nwr = sio_writev(fd, iov, iovcnt, &is_error_critical);
+	if (nwr < 0 && is_error_critical)
+		diag_raise();
+	else if (nwr > 0) {
+		rmean_collect(rmean_net, IPROTO_SENT, nwr);
 		if (begin->used + nwr == end->used) {
 			*begin = *end;
 			return 0;
@@ -1752,15 +1757,13 @@ net_send_greeting(struct cmsg *m)
 	struct iproto_connection *con = msg->connection;
 	if (msg->close_connection) {
 		struct obuf *out = msg->wpos.obuf;
-		try {
-			int64_t nwr = sio_writev(con->output.fd, out->iov,
-						 obuf_iovcnt(out));
-
-			/* Count statistics */
+		bool is_error_critical;
+		int64_t nwr = sio_writev(con->output.fd, out->iov,
+					 obuf_iovcnt(out), &is_error_critical);
+		if (nwr < 0 && is_error_critical)
+			diag_log();
+		else if (nwr > 0)
 			rmean_collect(rmean_net, IPROTO_SENT, nwr);
-		} catch (Exception *e) {
-			e->log();
-		}
 		assert(iproto_connection_is_idle(con));
 		iproto_connection_close(con);
 		iproto_msg_delete(msg);

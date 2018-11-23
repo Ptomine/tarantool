@@ -205,23 +205,27 @@ sio_listen(int fd)
 {
 	int rc = listen(fd, sio_listen_backlog());
 	if (rc < 0)
-		tnt_raise(SocketError, sio_socketname(fd), "listen");
+		diag_set(SocketError, sio_socketname(fd), "listen");
 	return rc;
 }
 
 int
-sio_accept(int fd, struct sockaddr *addr, socklen_t *addrlen)
+sio_accept(int fd, struct sockaddr *addr, socklen_t *addrlen,
+	   bool *is_error_critical)
 {
 	/* Accept a connection. */
 	int newfd = accept(fd, addr, addrlen);
-	if (newfd < 0 &&
-	    (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR))
-		tnt_raise(SocketError, sio_socketname(fd), "accept");
+	if (newfd < 0) {
+		*is_error_critical = errno != EAGAIN && errno != EWOULDBLOCK &&
+				     errno != EINTR;
+		if (*is_error_critical)
+			diag_set(SocketError, sio_socketname(fd), "accept");
+	}
 	return newfd;
 }
 
 ssize_t
-sio_read(int fd, void *buf, size_t count)
+sio_read(int fd, void *buf, size_t count, bool *is_error_critical)
 {
 	ssize_t n = read(fd, buf, count);
 	if (n >= 0)
@@ -231,6 +235,7 @@ sio_read(int fd, void *buf, size_t count)
 	switch (errno) {
 	case EAGAIN:
 	case EINTR:
+		*is_error_critical = false;
 		break;
 	/*
 	 * Happens typically when the client closes socket on
@@ -240,55 +245,78 @@ sio_read(int fd, void *buf, size_t count)
 	case ECONNRESET:
 		errno = 0;
 		n = 0;
+		*is_error_critical = false;
 		break;
 	default:
-		tnt_raise(SocketError, sio_socketname(fd), "read(%zd)", count);
+		diag_set(SocketError, sio_socketname(fd), "read(%zd)", count);
+		*is_error_critical = true;
 	}
 	return n;
 }
 
 ssize_t
-sio_write(int fd, const void *buf, size_t count)
+sio_write(int fd, const void *buf, size_t count, bool *is_error_critical)
 {
 	ssize_t n = write(fd, buf, count);
-	if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-		tnt_raise(SocketError, sio_socketname(fd), "write(%zd)", count);
+	if (n < 0) {
+		*is_error_critical = errno != EAGAIN && errno != EWOULDBLOCK &&
+				     errno != EINTR;
+		if (*is_error_critical) {
+			diag_set(SocketError, sio_socketname(fd), "write(%zd)",
+				 count);
+		}
+	}
 	return n;
 }
 
 ssize_t
-sio_writev(int fd, const struct iovec *iov, int iovcnt)
+sio_writev(int fd, const struct iovec *iov, int iovcnt, bool *is_error_critical)
 {
 	int cnt = iovcnt < IOV_MAX ? iovcnt : IOV_MAX;
 	ssize_t n = writev(fd, iov, cnt);
-	if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK &&
-	    errno != EINTR) {
-		tnt_raise(SocketError, sio_socketname(fd),
-			  "writev(%d)", iovcnt);
+	if (n < 0) {
+		*is_error_critical = errno != EAGAIN && errno != EWOULDBLOCK &&
+				     errno != EINTR;
+		if (*is_error_critical) {
+			diag_set(SocketError, sio_socketname(fd), "writev(%d)",
+				 iovcnt);
+		}
 	}
 	return n;
 }
 
 ssize_t
 sio_sendto(int fd, const void *buf, size_t len, int flags,
-	   const struct sockaddr *dest_addr, socklen_t addrlen)
+	   const struct sockaddr *dest_addr, socklen_t addrlen,
+	   bool *is_error_critical)
 {
 	ssize_t n = sendto(fd, buf, len, flags, (struct sockaddr*)dest_addr,
 	                   addrlen);
-	if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-		tnt_raise(SocketError, sio_socketname(fd), "sendto(%zd)", len);
+	if (n < 0) {
+		*is_error_critical = errno != EAGAIN && errno != EWOULDBLOCK &&
+				     errno != EINTR;
+		if (*is_error_critical) {
+			diag_set(SocketError, sio_socketname(fd), "sendto(%zd)",
+				 len);
+		}
+	}
 	return n;
 }
 
 ssize_t
 sio_recvfrom(int fd, void *buf, size_t len, int flags,
-	     struct sockaddr *src_addr, socklen_t *addrlen)
+	     struct sockaddr *src_addr, socklen_t *addrlen,
+	     bool *is_error_critical)
 {
 	ssize_t n = recvfrom(fd, buf, len, flags, (struct sockaddr*)src_addr,
 	                     addrlen);
-	if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-		tnt_raise(SocketError, sio_socketname(fd), "recvfrom(%zd)",
-			  len);
+	if (n < 0) {
+		*is_error_critical = errno != EAGAIN && errno != EWOULDBLOCK &&
+				     errno != EINTR;
+		if (*is_error_critical) {
+			diag_set(SocketError, sio_socketname(fd),
+				 "recvfrom(%zd)", len);
+		}
 	}
 	return n;
 }

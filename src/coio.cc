@@ -78,11 +78,9 @@ coio_connect_addr(struct ev_io *coio, struct sockaddr *addr,
 {
 	ev_loop *loop = loop();
 	evio_socket(coio, addr->sa_family, SOCK_STREAM, 0);
-	auto coio_guard = make_scoped_guard([=]{ evio_close(loop, coio); });
-	if (sio_connect(coio->fd, addr, len) == 0) {
-		coio_guard.is_active = false;
+	if (sio_connect(coio->fd, addr, len) == 0)
 		return 0;
-	}
+	auto coio_guard = make_scoped_guard([=]{ evio_close(loop, coio); });
 	if (errno != EINPROGRESS)
 		diag_raise();
 	/*
@@ -252,12 +250,16 @@ coio_accept(struct ev_io *coio, struct sockaddr *addr,
 	while (true) {
 		/* Assume that there are waiting clients
 		 * available */
-		int fd = sio_accept(coio->fd, addr, &addrlen);
+		bool is_error_critical;
+		int fd = sio_accept(coio->fd, addr, &addrlen,
+				    &is_error_critical);
 		if (fd >= 0) {
 			evio_setsockopt_client(fd, addr->sa_family,
 					       SOCK_STREAM);
 			return fd;
 		}
+		if (is_error_critical)
+			diag_raise();
 		/* The socket is not ready, yield */
 		if (! ev_is_active(coio)) {
 			ev_io_set(coio, coio->fd, EV_READ);
@@ -303,7 +305,9 @@ coio_read_ahead_timeout(struct ev_io *coio, void *buf, size_t sz,
 		 * the user called read(), some data must
 		 * be expected.
 		 */
-		ssize_t nrd = sio_read(coio->fd, buf, bufsiz);
+		bool is_error_critical;
+		ssize_t nrd = sio_read(coio->fd, buf, bufsiz,
+				       &is_error_critical);
 		if (nrd > 0) {
 			to_read -= nrd;
 			if (to_read <= 0)
@@ -313,6 +317,8 @@ coio_read_ahead_timeout(struct ev_io *coio, void *buf, size_t sz,
 		} else if (nrd == 0) {
 			errno = 0;
 			return sz - to_read;
+		} else if (is_error_critical) {
+			diag_raise();
 		}
 
 		/* The socket is not ready, yield */
@@ -397,13 +403,17 @@ coio_write_timeout(struct ev_io *coio, const void *buf, size_t sz,
 		 * Sic: write as much data as possible,
 		 * assuming the socket is ready.
 		 */
-		ssize_t nwr = sio_write(coio->fd, buf, towrite);
+		bool is_error_critical;
+		ssize_t nwr = sio_write(coio->fd, buf, towrite,
+					&is_error_critical);
 		if (nwr > 0) {
 			/* Go past the data just written. */
 			if (nwr >= towrite)
 				return sz;
 			towrite -= nwr;
 			buf = (char *) buf + nwr;
+		} else if (is_error_critical) {
+			diag_raise();
 		}
 		if (! ev_is_active(coio)) {
 			ev_io_set(coio, coio->fd, EV_WRITE);
@@ -433,15 +443,12 @@ coio_write_timeout(struct ev_io *coio, const void *buf, size_t sz,
 static inline ssize_t
 coio_flush(int fd, struct iovec *iov, ssize_t offset, int iovcnt)
 {
-	ssize_t nwr;
-	try {
-		sio_add_to_iov(iov, -offset);
-		nwr = sio_writev(fd, iov, iovcnt);
-		sio_add_to_iov(iov, offset);
-	} catch (SocketError *e) {
-		sio_add_to_iov(iov, offset);
-		throw;
-	}
+	sio_add_to_iov(iov, -offset);
+	bool is_error_critical;
+	ssize_t nwr = sio_writev(fd, iov, iovcnt, &is_error_critical);
+	sio_add_to_iov(iov, offset);
+	if (nwr < 0 && is_error_critical)
+		diag_raise();
 	return nwr;
 }
 
@@ -518,10 +525,13 @@ coio_sendto_timeout(struct ev_io *coio, const void *buf, size_t sz, int flags,
 		 * Sic: write as much data as possible,
 		 * assuming the socket is ready.
 		 */
-		ssize_t nwr = sio_sendto(coio->fd, buf, sz,
-					 flags, dest_addr, addrlen);
+		bool is_error_critical;
+		ssize_t nwr = sio_sendto(coio->fd, buf, sz, flags, dest_addr,
+					 addrlen, &is_error_critical);
 		if (nwr > 0)
 			return nwr;
+		if (is_error_critical)
+			diag_raise();
 		if (! ev_is_active(coio)) {
 			ev_io_set(coio, coio->fd, EV_WRITE);
 			ev_io_start(loop(), coio);
@@ -561,11 +571,13 @@ coio_recvfrom_timeout(struct ev_io *coio, void *buf, size_t sz, int flags,
 		 * Read as much data as possible,
 		 * assuming the socket is ready.
 		 */
-		ssize_t nrd = sio_recvfrom(coio->fd, buf, sz, flags,
-					   src_addr, &addrlen);
+		bool is_error_critical;
+		ssize_t nrd = sio_recvfrom(coio->fd, buf, sz, flags, src_addr,
+					   &addrlen, &is_error_critical);
 		if (nrd >= 0)
 			return nrd;
-
+		if (is_error_critical)
+			diag_raise();
 		if (! ev_is_active(coio)) {
 			ev_io_set(coio, coio->fd, EV_READ);
 			ev_io_start(loop(), coio);

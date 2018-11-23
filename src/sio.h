@@ -155,57 +155,110 @@ sio_bind(int fd, struct sockaddr *addr, socklen_t addrlen);
 
 /**
  * Mark a socket as accepting connections. A wrapper for listen(),
- * but throws exception on error.
+ * but sets diagnostics on error.
  */
 int
 sio_listen(int fd);
 
 /**
  * Accept a client connection on a server socket. A wrapper for
- * accept(), but throws exception on error except EAGAIN, EINTR,
+ * accept(), but sets diagnostics on error except EAGAIN, EINTR,
  * EWOULDBLOCK.
+ * @param fd Server socket.
+ * @param[out] addr Accepted client's address.
+ * @param[in, out] addrlen Size of @a addr.
+ * @param[out] is_error_critical Set to true, if an error occured
+ *             and it was not EAGAIN, EINTR and EWOULDBLOCK.
+ *
+ * @retval Client socket, or -1 on error.
  */
 int
-sio_accept(int fd, struct sockaddr *addr, socklen_t *addrlen);
+sio_accept(int fd, struct sockaddr *addr, socklen_t *addrlen,
+	   bool *is_error_critical);
 
 /**
  * Read up to @a count bytes from a socket. A wrapper for read(),
- * but throws exception on error except EWOULDBLOCK, EINTR,
+ * but sets diagnostics on error except EWOULDBLOCK, EINTR,
  * EAGAIN, ECONNRESET.
+ * @param fd Socket.
+ * @param buf Buffer to read into.
+ * @param count How many bytes to read.
+ * @param[out] is_error_critical Set to true, if an error occured
+ *             and it was not EAGAIN, EINTR, ECONNRESET and
+ *             EWOULDBLOCK.
+ *
+ * @retval How many bytes are read, or -1 on error.
  */
 ssize_t
-sio_read(int fd, void *buf, size_t count);
+sio_read(int fd, void *buf, size_t count, bool *is_error_critical);
 
 /**
  * Write up to @a count bytes to a socket. A wrapper for write(),
- * but throws exception on error except EAGAIN, EINTR,
+ * but sets diagnostics on error except EAGAIN, EINTR,
  * EWOULDBLOCK.
+ * @param fd Socket.
+ * @param buf Buffer to write.
+ * @param count How many bytes to write.
+ * @param[out] is_error_critical Set to true, if an error occured
+ *             and it was not EAGAIN, EINTR and EWOULDBLOCK.
+ *
+ * @retval How many bytes are written, or -1 on error.
  */
 ssize_t
-sio_write(int fd, const void *buf, size_t count);
+sio_write(int fd, const void *buf, size_t count, bool *is_error_critical);
 
 /**
  * Write @a iov vector to a socket. A wrapper for writev(), but
- * throws exception on error except EAGAIN, EINTR, EWOULDBLOCK.
+ * sets diagnostics on error except EAGAIN, EINTR, EWOULDBLOCK.
+ * @param fd Socket.
+ * @param iov Vector to write.
+ * @param iovcnt Size of @a iov.
+ * @param[out] is_error_critical Set to true, if an error occured
+ *             and it was not EAGAIN, EINTR and EWOULDBLOCK.
+ *
+ * @retval How many bytes are written, or -1 on error.
  */
 ssize_t
-sio_writev(int fd, const struct iovec *iov, int iovcnt);
+sio_writev(int fd, const struct iovec *iov, int iovcnt,
+	   bool *is_error_critical);
 
 /**
- * Send a message on a socket. A wrapper for sendto(), but throws
- * exception on error except EAGAIN, EINTR, EWOULDBLOCK.
+ * Send a message on a socket. A wrapper for sendto(), but sets
+ * diagnostics on error except EAGAIN, EINTR, EWOULDBLOCK.
+ * @param fd Socket to send to.
+ * @param buf Buffer to send.
+ * @param len Size of @a buf.
+ * @param flags sendto() flags.
+ * @param dest_addr Destination address.
+ * @param addrlen Size of @a dest_addr.
+ * @param[out] is_error_critical Set to true, if an error occured
+ *             and it was not EAGAIN, EINTR and EWOULDBLOCK.
+ *
+ * @param How many bytes are sent, or -1 on error.
  */
 ssize_t
 sio_sendto(int fd, const void *buf, size_t len, int flags,
-	   const struct sockaddr *dest_addr, socklen_t addrlen);
+	   const struct sockaddr *dest_addr, socklen_t addrlen,
+	   bool *is_error_critical);
 
 /**
  * Receive a message on a socket. A wrapper for recvfrom(), but
- * throws exception on error except EAGAIN, EINTR, EWOULDBLOCK.
+ * sets diagnostics on error except EAGAIN, EINTR, EWOULDBLOCK.
+ * @param fd Socket to receive from.
+ * @param buf Buffer to save message.
+ * @param len Size of @a buf.
+ * @param flags recvfrom() flags.
+ * @param[out] src_addr Source address.
+ * @param[in, out] addrlen Size of @a src_addr.
+ * @param[out] is_error_critical Set to true, if an error occured
+ *             and it was not EAGAIN, EINTR and EWOULDBLOCK.
+ *
+ * @param How many bytes are received, or -1 on error.
  */
 ssize_t
 sio_recvfrom(int fd, void *buf, size_t len, int flags,
-	     struct sockaddr *src_addr, socklen_t *addrlen);
+	     struct sockaddr *src_addr, socklen_t *addrlen,
+	     bool *is_error_critical);
 
 #endif /* defined(__cplusplus) */
 

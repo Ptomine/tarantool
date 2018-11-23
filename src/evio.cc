@@ -181,11 +181,15 @@ evio_service_accept_cb(ev_loop * /* loop */, ev_io *watcher,
 		try {
 			struct sockaddr_storage addr;
 			socklen_t addrlen = sizeof(addr);
+			bool is_error_critical;
 			fd = sio_accept(service->ev.fd,
-				(struct sockaddr *)&addr, &addrlen);
-
-			if (fd < 0) /* EAGAIN, EWOULDLOCK, EINTR */
+					(struct sockaddr *)&addr, &addrlen,
+					&is_error_critical);
+			if (fd < 0) {
+				if (is_error_critical)
+					diag_raise();
 				return;
+			}
 			/* set common client socket options */
 			evio_setsockopt_client(fd, service->addr.sa_family, SOCK_STREAM);
 			/*
@@ -294,7 +298,8 @@ evio_service_listen(struct evio_service *service)
 		  sio_strfaddr(&service->addr, service->addr_len));
 
 	int fd = service->ev.fd;
-	sio_listen(fd);
+	if (sio_listen(fd) < 0)
+		diag_raise();
 	ev_io_start(service->loop, &service->ev);
 }
 
