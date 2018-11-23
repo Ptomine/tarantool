@@ -50,6 +50,7 @@ extern const struct type_info type_LuajitError;
 extern const struct type_info type_IllegalParams;
 extern const struct type_info type_SystemError;
 extern const struct type_info type_CollationError;
+extern const struct type_info type_SocketError;
 
 const char *
 exception_get_string(struct error *e, const struct method_info *method);
@@ -97,7 +98,6 @@ protected:
 	int m_errno;
 };
 
-extern const struct type_info type_SocketError;
 class SocketError: public SystemError {
 public:
 	SocketError(const char *file, unsigned line, const char *socketname,

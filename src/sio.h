@@ -90,9 +90,6 @@ sio_add_to_iov(struct iovec *iov, size_t size)
 	iov->iov_base = (char *) iov->iov_base - size;
 }
 
-#if defined(__cplusplus)
-} /* extern "C" */
-
 /** Pretty format socket name and peer. */
 const char *
 sio_socketname(int fd);
@@ -260,6 +257,8 @@ sio_recvfrom(int fd, void *buf, size_t len, int flags,
 	     struct sockaddr *src_addr, socklen_t *addrlen,
 	     bool *is_error_critical);
 
+#if defined(__cplusplus)
+} /* extern "C" */
 #endif /* defined(__cplusplus) */
 
 #endif /* TARANTOOL_SIO_H_INCLUDED */
