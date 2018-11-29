@@ -38,6 +38,11 @@
 #include "tarantool_ev.h"
 #include "sio.h"
 #include "uri.h"
+
+#if defined(__cplusplus)
+extern "C" {
+#endif /* defined(__cplusplus) */
+
 /**
  * A way to add a socket to the event loop.
  *
@@ -149,5 +154,9 @@ evio_timeout_update(ev_loop *loop, ev_tstamp start, ev_tstamp *delay)
 /** Set nonblock, keepalive and nodelay options to socket. */
 int
 evio_setsockopt_client(int fd, int family, int type);
+
+#if defined(__cplusplus)
+} /* extern "C" */
+#endif /* defined(__cplusplus) */
 
 #endif /* TARANTOOL_EVIO_H_INCLUDED */
