@@ -77,7 +77,8 @@ coio_connect_addr(struct ev_io *coio, struct sockaddr *addr,
 		  socklen_t len, ev_tstamp timeout)
 {
 	ev_loop *loop = loop();
-	evio_socket(coio, addr->sa_family, SOCK_STREAM, 0);
+	if (evio_socket(coio, addr->sa_family, SOCK_STREAM, 0) != 0)
+		diag_raise();
 	if (sio_connect(coio->fd, addr, len) == 0)
 		return 0;
 	auto coio_guard = make_scoped_guard([=]{ evio_close(loop, coio); });
@@ -646,8 +647,9 @@ coio_service_init(struct coio_service *service, const char *name,
 void
 coio_service_start(struct evio_service *service, const char *uri)
 {
-	evio_service_bind(service, uri);
-	evio_service_listen(service);
+	if (evio_service_bind(service, uri) != 0 ||
+	    evio_service_listen(service) != 0)
+		diag_raise();
 }
 
 void

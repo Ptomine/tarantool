@@ -29,14 +29,12 @@
  * SUCH DAMAGE.
  */
 #include "evio.h"
-#include "scoped_guard.h"
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
-
 #include <trivia/util.h>
 #include "exception.h"
 
@@ -51,18 +49,19 @@ evio_close(ev_loop *loop, struct ev_io *evio)
 	}
 }
 
-void
+int
 evio_socket(struct ev_io *evio, int domain, int type, int protocol)
 {
 	assert(! evio_has_fd(evio));
 	evio->fd = sio_socket(domain, type, protocol);
 	if (evio->fd < 0)
-		diag_raise();
+		return -1;
 	if (evio_setsockopt_client(evio->fd, domain, type) != 0) {
 		close(evio->fd);
 		ev_io_set(evio, -1, 0);
-		diag_raise();
+		return -1;
 	}
+	return 0;
 }
 
 static int
@@ -121,14 +120,14 @@ evio_setsockopt_client(int fd, int family, int type)
 }
 
 /** Set options for server sockets. */
-static void
+static int
 evio_setsockopt_server(int fd, int family, int type)
 {
 	if (sio_setfl(fd, O_NONBLOCK, true) != 0)
-		diag_raise();
+		return -1;
 	int on = 1;
 	if (sio_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0)
-		diag_raise();
+		return -1;
 
 	/*
 	 * Send all buffered messages on socket before take
@@ -137,10 +136,11 @@ evio_setsockopt_server(int fd, int family, int type)
 	struct linger linger = { 0, 0 };
 	if (sio_setsockopt(fd, SOL_SOCKET, SO_LINGER, &linger,
 			   sizeof(linger)) != 0)
-		diag_raise();
+		return -1;
 	if (type == SOCK_STREAM && family != AF_UNIX &&
 	    evio_setsockopt_keeping(fd) != 0)
-		diag_raise();
+		return -1;
+	return 0;
 }
 
 /**
@@ -220,12 +220,8 @@ err:
 	return -1;
 }
 
-/**
- * Try to bind on the configured port.
- *
- * Throws an exception if error.
- */
-static void
+/** Try to bind on the configured port. */
+static int
 evio_service_bind_addr(struct evio_service *service)
 {
 	say_debug("%s: binding to %s...", service->name,
@@ -233,23 +229,22 @@ evio_service_bind_addr(struct evio_service *service)
 	/* Create a socket. */
 	int fd = sio_socket(service->addr.sa_family, SOCK_STREAM, IPPROTO_TCP);
 	if (fd < 0)
-		diag_raise();
-
-	auto fd_guard = make_scoped_guard([=]{ close(fd); });
-
-	evio_setsockopt_server(fd, service->addr.sa_family, SOCK_STREAM);
+		return -1;
+	if (evio_setsockopt_server(fd, service->addr.sa_family,
+				   SOCK_STREAM) != 0)
+		goto error;
 
 	if (sio_bind(fd, &service->addr, service->addr_len)) {
 		if (errno != EADDRINUSE)
-			diag_raise();
+			goto error;
 		if (evio_service_reuse_addr(service, fd))
-			diag_raise();
+			goto error;
 		if (sio_bind(fd, &service->addr, service->addr_len)) {
 			if (errno == EADDRINUSE) {
 				diag_set(SocketError, sio_socketname(fd),
 					 "bind");
 			}
-			diag_raise();
+			goto error;
 		}
 	}
 
@@ -258,11 +253,13 @@ evio_service_bind_addr(struct evio_service *service)
 
 	/* Register the socket in the event loop. */
 	ev_io_set(&service->ev, fd, EV_READ);
-
-	fd_guard.is_active = false;
+	return 0;
+error:
+	close(fd);
+	return -1;
 }
 
-void
+int
 evio_service_listen(struct evio_service *service)
 {
 	say_debug("%s: listening on %s...", service->name,
@@ -270,8 +267,9 @@ evio_service_listen(struct evio_service *service)
 
 	int fd = service->ev.fd;
 	if (sio_listen(fd) < 0)
-		diag_raise();
+		return -1;
 	ev_io_start(service->loop, &service->ev);
+	return 0;
 }
 
 void
@@ -294,13 +292,14 @@ evio_service_init(ev_loop *loop, struct evio_service *service, const char *name,
 	service->ev.data = service;
 }
 
-void
+int
 evio_service_bind(struct evio_service *service, const char *uri)
 {
 	struct uri u;
 	if (uri_parse(&u, uri) || u.service == NULL) {
-		tnt_raise(SocketError, sio_socketname(-1),
-			  "invalid uri for bind: %s", uri);
+		diag_set(SocketError, sio_socketname(-1),
+			 "invalid uri for bind: %s", uri);
+		return -1;
 	}
 
 	snprintf(service->serv, sizeof(service->serv), "%.*s",
@@ -334,25 +333,27 @@ evio_service_bind(struct evio_service *service, const char *uri)
 	 */
 	if (getaddrinfo(*service->host ? service->host : NULL, service->serv,
 			&hints, &res) != 0 || res == NULL) {
-		tnt_raise(SocketError, sio_socketname(-1),
-			  "can't resolve uri for bind");
+		diag_set(SocketError, sio_socketname(-1),
+			 "can't resolve uri for bind");
+		return -1;
 	}
-	auto addrinfo_guard = make_scoped_guard([=]{ freeaddrinfo(res); });
 
 	for (struct addrinfo *ai = res; ai != NULL; ai = ai->ai_next) {
 		memcpy(&service->addr, ai->ai_addr, ai->ai_addrlen);
 		service->addr_len = ai->ai_addrlen;
-		try {
-			return evio_service_bind_addr(service);
-		} catch (SocketError *e) {
-			say_error("%s: failed to bind on %s: %s", service->name,
-				  sio_strfaddr(ai->ai_addr, ai->ai_addrlen),
-				  e->get_errmsg());
-			/* ignore */
+		if (evio_service_bind_addr(service) == 0) {
+			freeaddrinfo(res);
+			return 0;
 		}
+		struct error *e = diag_last_error(diag_get());
+		say_error("%s: failed to bind on %s: %s", service->name,
+			  sio_strfaddr(ai->ai_addr, ai->ai_addrlen), e->errmsg);
+		/* ignore */
 	}
-	tnt_raise(SocketError, sio_socketname(-1), "%s: failed to bind",
-		  service->name);
+	freeaddrinfo(res);
+	diag_set(SocketError, sio_socketname(-1), "%s: failed to bind",
+		 service->name);
+	return -1;
 }
 
 void

@@ -2014,29 +2014,24 @@ iproto_do_cfg_f(struct cbus_call_msg *m)
 {
 	struct iproto_cfg_msg *cfg_msg = (struct iproto_cfg_msg *) m;
 	int old;
-	try {
-		switch (cfg_msg->op) {
-		case IPROTO_CFG_MSG_MAX:
-			cpipe_set_max_input(&tx_pipe,
-					    cfg_msg->iproto_msg_max / 2);
-			old = iproto_msg_max;
-			iproto_msg_max = cfg_msg->iproto_msg_max;
-			if (old < iproto_msg_max)
-				iproto_resume();
-			break;
-		case IPROTO_CFG_LISTEN:
-			if (evio_service_is_active(&binary))
-				evio_service_stop(&binary);
-			if (cfg_msg->uri != NULL) {
-				evio_service_bind(&binary, cfg_msg->uri);
-				evio_service_listen(&binary);
-			}
-			break;
-		default:
-			unreachable();
-		}
-	} catch (Exception *e) {
-		return -1;
+	switch (cfg_msg->op) {
+	case IPROTO_CFG_MSG_MAX:
+		cpipe_set_max_input(&tx_pipe, cfg_msg->iproto_msg_max / 2);
+		old = iproto_msg_max;
+		iproto_msg_max = cfg_msg->iproto_msg_max;
+		if (old < iproto_msg_max)
+			iproto_resume();
+		break;
+	case IPROTO_CFG_LISTEN:
+		if (evio_service_is_active(&binary))
+			evio_service_stop(&binary);
+		if (cfg_msg->uri != NULL &&
+		    (evio_service_bind(&binary, cfg_msg->uri) != 0 ||
+		     evio_service_listen(&binary) != 0))
+			return -1;
+		break;
+	default:
+		unreachable();
 	}
 	return 0;
 }

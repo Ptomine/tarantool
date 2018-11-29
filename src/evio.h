@@ -39,7 +39,7 @@
 #include "sio.h"
 #include "uri.h"
 /**
- * Exception-aware way to add a socket to the event loop.
+ * A way to add a socket to the event loop.
  *
  * Coroutines/fibers are not used for port listeners since
  * listener's job is usually simple and only involves creating a
@@ -80,9 +80,8 @@ struct evio_service
 
 	/**
 	 * A callback invoked on every accepted client socket.
-	 * It's OK to throw an exception in the callback:
-	 * when it happens, the exception is logged, and the
-	 * accepted socket is closed.
+	 * If returns != 0, the error is logged, and the accepted
+	 * socket is closed.
 	 */
 	evio_accept_f on_accept;
 	void *on_accept_param;
@@ -98,11 +97,11 @@ evio_service_init(ev_loop *loop, struct evio_service *service, const char *name,
 		  evio_accept_f on_accept, void *on_accept_param);
 
 /** Bind service to specified uri. */
-void
+int
 evio_service_bind(struct evio_service *service, const char *uri);
 
 /** Listen on bounded socket. */
-void
+int
 evio_service_listen(struct evio_service *service);
 
 /** If started, stop event flow and close the acceptor socket. */
@@ -113,7 +112,7 @@ evio_service_stop(struct evio_service *service);
  * Create a client socket. Sets keepalive, nonblock and nodelay
  * options.
  */
-void
+int
 evio_socket(struct ev_io *coio, int domain, int type, int protocol);
 
 /** Close evio service socket and detach from event loop. */
