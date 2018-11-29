@@ -39,15 +39,14 @@
 #include "sio.h"
 #include "uri.h"
 /**
- * Exception-aware way to add a listening socket to the event
- * loop. Callbacks are invoked on bind and accept events.
+ * Exception-aware way to add a socket to the event loop.
  *
- * Coroutines/fibers are not used for port listeners
- * since listener's job is usually simple and only involves
- * creating a session for the accepted socket. The session itself
- * can be built around simple libev callbacks, or around
- * cooperative multitasking (on_accept callback can create
- * a fiber and use coio.h (cooperative multi-tasking I/O)) API.
+ * Coroutines/fibers are not used for port listeners since
+ * listener's job is usually simple and only involves creating a
+ * session for the accepted socket. The session itself can be
+ * built around simple libev callbacks, or around cooperative
+ * multitasking (on_accept callback can create a fiber and use
+ * coio.h (cooperative multi-tasking I/O)) API.
  *
  * How to use a service:
  * struct evio_service *service;
@@ -58,9 +57,6 @@
  * ...
  * evio_service_stop(service);
  * free(service);
- *
- * If a service is not started, but only initialized, no
- * dedicated cleanup/destruction is necessary.
  */
 struct evio_service;
 
@@ -101,15 +97,11 @@ void
 evio_service_init(ev_loop *loop, struct evio_service *service, const char *name,
 		  evio_accept_f on_accept, void *on_accept_param);
 
-/** Bind service to specified uri */
+/** Bind service to specified uri. */
 void
 evio_service_bind(struct evio_service *service, const char *uri);
 
-/**
- * Listen on bounded socket
- *
- * @retval 0 for success
- */
+/** Listen on bounded socket. */
 void
 evio_service_listen(struct evio_service *service);
 
@@ -117,22 +109,27 @@ evio_service_listen(struct evio_service *service);
 void
 evio_service_stop(struct evio_service *service);
 
+/**
+ * Create a client socket. Sets keepalive, nonblock and nodelay
+ * options.
+ */
 void
 evio_socket(struct ev_io *coio, int domain, int type, int protocol);
 
+/** Close evio service socket and detach from event loop. */
 void
 evio_close(ev_loop *loop, struct ev_io *evio);
-
-static inline bool
-evio_service_is_active(struct evio_service *service)
-{
-	return service->ev.fd >= 0;
-}
 
 static inline bool
 evio_has_fd(struct ev_io *ev)
 {
 	return ev->fd >= 0;
+}
+
+static inline bool
+evio_service_is_active(struct evio_service *service)
+{
+	return evio_has_fd(&service->ev);
 }
 
 static inline void
@@ -150,6 +147,7 @@ evio_timeout_update(ev_loop *loop, ev_tstamp start, ev_tstamp *delay)
 	*delay = (elapsed >= *delay) ? 0 : *delay - elapsed;
 }
 
+/** Set nonblock, keepalive and nodelay options to socket. */
 int
 evio_setsockopt_client(int fd, int family, int type);
 
