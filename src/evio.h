@@ -62,6 +62,11 @@
  * If a service is not started, but only initialized, no
  * dedicated cleanup/destruction is necessary.
  */
+struct evio_service;
+
+typedef int (*evio_accept_f)(struct evio_service *, int, struct sockaddr *,
+			      socklen_t);
+
 struct evio_service
 {
 	/** Service name. E.g. 'primary', 'secondary', etc. */
@@ -83,8 +88,7 @@ struct evio_service
 	 * when it happens, the exception is logged, and the
 	 * accepted socket is closed.
 	 */
-	void (*on_accept)(struct evio_service *, int,
-			  struct sockaddr *, socklen_t);
+	evio_accept_f on_accept;
 	void *on_accept_param;
 
 	/** libev io object for the acceptor socket. */
@@ -94,11 +98,8 @@ struct evio_service
 
 /** Initialize the service. Don't bind to the port yet. */
 void
-evio_service_init(ev_loop *loop,
-		  struct evio_service *service, const char *name,
-		  void (*on_accept)(struct evio_service *,
-				    int, struct sockaddr *, socklen_t),
-		  void *on_accept_param);
+evio_service_init(ev_loop *loop, struct evio_service *service, const char *name,
+		  evio_accept_f on_accept, void *on_accept_param);
 
 /** Bind service to specified uri */
 void
