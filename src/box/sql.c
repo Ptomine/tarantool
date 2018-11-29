@@ -1535,6 +1535,7 @@ sql_checks_resolve_space_def_reference(ExprList *expr_list,
 			diag_set(ClientError, ER_SQL, parser.zErrMsg);
 		rc = -1;
 	}
+	assert(parser.pVdbe == NULL);
 	sql_parser_destroy(&parser);
 	return rc;
 }

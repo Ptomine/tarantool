@@ -249,6 +249,8 @@ sql_trigger_finish(struct Parse *parse, struct TriggerStep *step_list,
 		parse->parsed_ast.trigger = trigger;
 		parse->parsed_ast_type = AST_TYPE_TRIGGER;
 		trigger = NULL;
+		sqlite3VdbeDelete(parse->pVdbe);
+		parse->pVdbe = NULL;
 	}
 
 cleanup:

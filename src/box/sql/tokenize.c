@@ -570,6 +570,7 @@ sql_expr_compile(sqlite3 *db, const char *expr, int expr_len)
 		parser.parsed_ast.expr = NULL;
 	}
 end:
+	assert(parser.pVdbe == NULL);
 	sql_parser_destroy(&parser);
 	return expression;
 }
@@ -592,6 +593,7 @@ sql_view_compile(struct sqlite3 *db, const char *view_stmt)
 		parser.parsed_ast.select = NULL;
 	}
 
+	assert(parser.pVdbe == NULL);
 	sql_parser_destroy(&parser);
 	return select;
 }
@@ -613,6 +615,7 @@ sql_trigger_compile(struct sqlite3 *db, const char *sql)
 		parser.parsed_ast.trigger = NULL;
 	}
 
+	assert(parser.pVdbe == NULL);
 	sql_parser_destroy(&parser);
 	return trigger;
 }
