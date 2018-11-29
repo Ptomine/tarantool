@@ -64,14 +64,17 @@ void
 evio_socket(struct ev_io *coio, int domain, int type, int protocol)
 {
 	assert(coio->fd == -1);
-	/* Don't leak fd if setsockopt fails. */
 	coio->fd = sio_socket(domain, type, protocol);
 	if (coio->fd < 0)
 		diag_raise();
-	evio_setsockopt_client(coio->fd, domain, type);
+	if (evio_setsockopt_client(coio->fd, domain, type) != 0) {
+		close(coio->fd);
+		coio->fd = -1;
+		diag_raise();
+	}
 }
 
-static void
+static int
 evio_setsockopt_keepalive(int fd)
 {
 	int on = 1;
@@ -79,9 +82,8 @@ evio_setsockopt_keepalive(int fd)
 	 * SO_KEEPALIVE to ensure connections don't hang
 	 * around for too long when a link goes away.
 	 */
-	if (sio_setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE,
-		       &on, sizeof(on)))
-		diag_raise();
+	if (sio_setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on)) != 0)
+		return -1;
 #ifdef __linux__
 	/*
 	 * On Linux, we are able to fine-tune keepalive
@@ -90,44 +92,46 @@ evio_setsockopt_keepalive(int fd)
 	 */
 	int keepcnt = 5;
 	if (sio_setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt,
-		       sizeof(int)))
-		diag_raise();
+			   sizeof(int)) != 0)
+		return -1;
 	int keepidle = 30;
 
 	if (sio_setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle,
-		       sizeof(int)))
-		diag_raise();
+			   sizeof(int)) != 0)
+		return -1;
 
 	int keepintvl = 60;
 	if (sio_setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl,
-		       sizeof(int)))
-		diag_raise();
+			   sizeof(int)) != 0)
+		return -1;
 #endif
+	return 0;
 }
 
 /** Set common client socket options. */
-void
+int
 evio_setsockopt_client(int fd, int family, int type)
 {
 	int on = 1;
-	/* In case this throws, the socket is not leaked. */
-	if (sio_setfl(fd, O_NONBLOCK, on))
-		diag_raise();
+	if (sio_setfl(fd, O_NONBLOCK, on) != 0)
+		return -1;
 	if (type == SOCK_STREAM && family != AF_UNIX) {
 		/*
 		 * SO_KEEPALIVE to ensure connections don't hang
 		 * around for too long when a link goes away.
 		 */
-		evio_setsockopt_keepalive(fd);
+		if (evio_setsockopt_keepalive(fd) != 0)
+			return -1;
 		/*
 		 * Lower latency is more important than higher
 		 * bandwidth, and we usually write entire
 		 * request/response in a single syscall.
 		 */
 		if (sio_setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
-				   &on, sizeof(on)))
-			diag_raise();
+				   &on, sizeof(on)) != 0)
+			return -1;
 	}
+	return 0;
 }
 
 /** Set options for server sockets. */
@@ -150,8 +154,9 @@ evio_setsockopt_server(int fd, int family, int type)
 	if (sio_setsockopt(fd, SOL_SOCKET, SO_LINGER,
 		       &linger, sizeof(linger)))
 		diag_raise();
-	if (type == SOCK_STREAM && family != AF_UNIX)
-		evio_setsockopt_keepalive(fd);
+	if (type == SOCK_STREAM && family != AF_UNIX &&
+	    evio_setsockopt_keepalive(fd) != 0)
+		diag_raise();
 }
 
 static inline const char *
@@ -191,7 +196,9 @@ evio_service_accept_cb(ev_loop * /* loop */, ev_io *watcher,
 				return;
 			}
 			/* set common client socket options */
-			evio_setsockopt_client(fd, service->addr.sa_family, SOCK_STREAM);
+			if (evio_setsockopt_client(fd, service->addr.sa_family,
+						   SOCK_STREAM) != 0)
+				diag_raise();
 			/*
 			 * Invoke the callback and pass it the accepted
 			 * socket.

@@ -254,8 +254,11 @@ coio_accept(struct ev_io *coio, struct sockaddr *addr,
 		int fd = sio_accept(coio->fd, addr, &addrlen,
 				    &is_error_critical);
 		if (fd >= 0) {
-			evio_setsockopt_client(fd, addr->sa_family,
-					       SOCK_STREAM);
+			if (evio_setsockopt_client(fd, addr->sa_family,
+						   SOCK_STREAM) != 0) {
+				close(fd);
+				diag_raise();
+			}
 			return fd;
 		}
 		if (is_error_critical)

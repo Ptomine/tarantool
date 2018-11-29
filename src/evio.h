@@ -150,7 +150,7 @@ evio_timeout_update(ev_loop *loop, ev_tstamp start, ev_tstamp *delay)
 	*delay = (elapsed >= *delay) ? 0 : *delay - elapsed;
 }
 
-void
+int
 evio_setsockopt_client(int fd, int family, int type);
 
 #endif /* TARANTOOL_EVIO_H_INCLUDED */
